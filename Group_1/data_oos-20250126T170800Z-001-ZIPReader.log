@@ -1,0 +1,29 @@
+[26-01-2025 18:09:28] ZIP Reader Version 14.00.0010 Build 1029
+[26-01-2025 18:09:28] Loading C:\Users\Soumi\OneDrive\Desktop\HFD Final\data_oos-20250126T170800Z-001.zip
+	0 errors/warnings
+[26-01-2025 18:09:28] Finished.
+[26-01-2025 18:09:28] Extracting C:\Users\Soumi\OneDrive\Desktop\HFD Final\data_oos-20250126T170800Z-001.zip
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data_oos-20250126T170800Z-001\data_oos\data1_2022_Q2.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data_oos-20250126T170800Z-001\data_oos\data1_2023_Q1.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data_oos-20250126T170800Z-001\data_oos\data1_2023_Q3.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data_oos-20250126T170800Z-001\data_oos\data1_2024_Q3.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data_oos-20250126T170800Z-001\data_oos\data1_2024_Q4.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data_oos-20250126T170800Z-001\data_oos\data2_2022_Q2.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data_oos-20250126T170800Z-001\data_oos\data2_2023_Q1.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data_oos-20250126T170800Z-001\data_oos\data2_2023_Q3.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data_oos-20250126T170800Z-001\data_oos\data2_2024_Q3.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data_oos-20250126T170800Z-001\data_oos\data2_2024_Q4.RData
+		CRC32 verified
+	Extracted 10 file(s)/folder(s)
+	Skipped 0 file(s)/folder(s)
+	0 errors/warnings
+[26-01-2025 18:09:28] Finished.

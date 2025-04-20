@@ -1,0 +1,37 @@
+[26-01-2025 18:09:32] ZIP Reader Version 14.00.0010 Build 1029
+[26-01-2025 18:09:32] Loading C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001.zip
+	0 errors/warnings
+[26-01-2025 18:09:32] Finished.
+[26-01-2025 18:09:32] Extracting C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001.zip
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001\data\data1_2022_Q1.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001\data\data1_2022_Q3.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001\data\data1_2022_Q4.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001\data\data1_2023_Q2.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001\data\data1_2023_Q4.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001\data\data1_2024_Q1.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001\data\data1_2024_Q2.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001\data\data2_2022_Q1.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001\data\data2_2022_Q3.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001\data\data2_2022_Q4.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001\data\data2_2023_Q2.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001\data\data2_2023_Q4.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001\data\data2_2024_Q1.RData
+		CRC32 verified
+	Inflating C:\Users\Soumi\OneDrive\Desktop\HFD Final\data-20250126T170804Z-001\data\data2_2024_Q2.RData
+		CRC32 verified
+	Extracted 14 file(s)/folder(s)
+	Skipped 0 file(s)/folder(s)
+	0 errors/warnings
+[26-01-2025 18:09:32] Finished.

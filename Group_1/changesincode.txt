@@ -1,0 +1,26 @@
+In the first version, flatteing was applied directly inside the function: positionVB_new
+
+posNQ <- positionVB_new(
+  signal   = ema_fast_NQ,
+  lower    = ema_slow_NQ - param_NQ$m_ * roll_std_NQ,
+  upper    = ema_slow_NQ + param_NQ$m_ * roll_std_NQ,
+  pos_flat = coredata(pos_flat_NQ),  # Flatten logic used here
+  strategy = "mom"
+)
+
+In the second version we take it outside. We first make position disregarding the flattening assumptions and once the positions are calculated we then forcefully flatten them according to the flattering assumption.
+
+posNQ_raw <- positionVB_new(
+  signal   = ema_fast_NQ,
+  lower    = ema_slow_NQ - param_NQ$m_ * roll_std_NQ,
+  upper    = ema_slow_NQ + param_NQ$m_ * roll_std_NQ,
+  pos_flat = rep(0, NROW(NQ_ff)),  # effectively disable auto-flatten
+  strategy = "mom"
+)
+flatten_times <- function(pos, allowed_start = "09:55", allowed_end = "15:40") {
+  time_ <- format(index(pos), "%H:%M")
+  pos[time_ < allowed_start] <- 0
+  pos[time_ >= allowed_end] <- 0
+  return(pos)
+}
+posNQ_final <- flatten_times(posNQ_raw, allowed_start = "09:55", allowed_end = "15:40")

@@ -1,0 +1,451 @@
+---
+title: "Final Strategy for Group 1 (NQ & SP) On OUT OF SAMPLE DATA"
+author: "Anindita Basu, Sana Ahmad"
+date: "2025-01-26"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+```{r setup, include=FALSE}
+# We set global chunk options here:
+knitr::opts_chunk$set(echo = TRUE, comment = NA, message = FALSE, warning = FALSE)
+```
+
+
+
+
+
+
+
+```{r final_strategy, ech=TRUE}
+################################################################################
+# FINAL VOLATILITY BREAKOUT MOM STRATEGY (NQ & SP), MULTIPLE QUARTERS
+# with a summary table of performance metrics for each quarter.
+################################################################################
+
+rm(list = ls())
+
+library(xts)
+library(zoo)
+library(TTR)
+library(lubridate)
+library(tseries)       # for maxdrawdown()
+library(caTools)       # runsd()
+library(RColorBrewer)
+library(ggplot2)
+library(dplyr)
+library(knitr)         # for kable() to show final table
+
+# External sources (only if needed)
+source("https://raw.githubusercontent.com/ptwojcik/HFD/master/function_mySR.R")
+source("https://raw.githubusercontent.com/ptwojcik/HFD/master/function_positionVB_new.R")
+source("https://raw.githubusercontent.com/ptwojcik/HFD/master/functions_plotHeatmap.R")
+
+###############################################################################
+# Helper Functions
+###############################################################################
+myCalmarRatio <- function(x, scale = 252) {
+  avg_ <- mean(coredata(x), na.rm = TRUE)
+  dd_obj <- maxdrawdown(cumsum(x))
+  return(scale * avg_ / dd_obj$maxdrawdown)
+}
+
+flatten_times <- function(pos, allowed_start = "09:55", allowed_end = "15:40") {
+  # Force position to 0 if time < allowed_start or time >= allowed_end
+  time_ <- format(index(pos), "%H:%M")
+  
+  # zero before the allowed start
+  pos[time_ < allowed_start] <- 0
+  # zero on or after the allowed end
+  pos[time_ >= allowed_end] <- 0
+  
+  return(pos)
+}
+
+###############################################################################
+# Hard‐coded best parameters for NQ & SP
+###############################################################################
+param_NQ <- list(fast_ema = 20, slow_ema = 60, vol_sd = 60, m_ = 2)
+param_SP <- list(fast_ema = 30, slow_ema = 60, vol_sd = 60, m_ = 2)
+
+contract_multiplier_NQ <- 20
+contract_multiplier_SP <- 50
+transaction_cost       <- 12.0
+scale_annual           <- 252  # Approx number of trading days in a quarter
+
+###############################################################################
+# Quarters to process
+###############################################################################
+quarters <- c("2022_Q1", "2022_Q3", "2022_Q4",
+              "2023_Q2", "2023_Q4", "2024_Q1", "2024_Q2")
+
+###############################################################################
+# Prepare a container for our final table
+###############################################################################
+results_table <- data.frame(
+  quarter    = character(),
+  grossSR    = numeric(),
+  netSR      = numeric(),
+  grossCR    = numeric(),
+  netCR      = numeric(),
+  grossPnL   = numeric(),
+  netPnL     = numeric(),
+  av_ntrades = numeric(),
+  stat       = numeric(),
+  stringsAsFactors = FALSE
+)
+
+###############################################################################
+# Main Loop
+###############################################################################
+for (selected_quarter in quarters) {
+  
+  # 1) Load data
+  filename <- paste0("data1_", selected_quarter, ".RData")
+  if (!file.exists(filename)) {
+    cat("File not found:", filename, "- skipping.\n")
+    next
+  }
+  load(filename)
+  
+  object_name <- paste0("data1_", selected_quarter)
+  if (!exists(object_name)) {
+    cat("Object", object_name, "not found - skipping.\n")
+    next
+  }
+  data_group1 <- get(object_name)
+  
+  if (!all(c("NQ", "SP") %in% colnames(data_group1))) {
+    cat("Columns NQ or SP missing - skipping quarter.\n")
+    next
+  }
+  
+  # 2) Preprocessing: forward-fill, skip times
+  data_group1$NQ <- na.locf(data_group1$NQ, na.rm = FALSE)
+  data_group1$SP <- na.locf(data_group1$SP, na.rm = FALSE)
+  
+  hhmm <- format(index(data_group1), format = "%H:%M")
+  # skip first 10 min (09:31–09:40) => NA
+  data_group1[hhmm >= "09:31" & hhmm <= "09:40", ] <- NA
+  # skip last 10 min (15:51–16:00) => NA
+  data_group1[hhmm >= "15:51" & hhmm <= "16:00", ] <- NA
+  
+  # 3) Build "raw" breakout positions for NQ, SP
+  #    IMPORTANT: pos_flat is all zero => we do not flatten automatically
+  NQ_ff <- na.locf(data_group1$NQ, na.rm = FALSE)
+  ema_fast_NQ <- EMA(NQ_ff, n = param_NQ$fast_ema)
+  ema_slow_NQ <- EMA(NQ_ff, n = param_NQ$slow_ema)
+  roll_std_NQ <- runsd(NQ_ff, param_NQ$vol_sd, endrule = "NA", align = "right")
+  
+  posNQ_raw <- positionVB_new(
+    signal   = ema_fast_NQ,
+    lower    = ema_slow_NQ - param_NQ$m_ * roll_std_NQ,
+    upper    = ema_slow_NQ + param_NQ$m_ * roll_std_NQ,
+    pos_flat = rep(0, NROW(NQ_ff)),  # effectively disable auto-flatten
+    strategy = "mom"
+  )
+  posNQ_raw <- xts(posNQ_raw, order.by = index(data_group1))
+  posNQ_raw <- na.locf(posNQ_raw, na.rm = FALSE)
+  
+  # same for SP
+  SP_ff <- na.locf(data_group1$SP, na.rm = FALSE)
+  ema_fast_SP <- EMA(SP_ff, n = param_SP$fast_ema)
+  ema_slow_SP <- EMA(SP_ff, n = param_SP$slow_ema)
+  roll_std_SP <- runsd(SP_ff, param_SP$vol_sd, endrule = "NA", align = "right")
+  
+  posSP_raw <- positionVB_new(
+    signal   = ema_fast_SP,
+    lower    = ema_slow_SP - param_SP$m_ * roll_std_SP,
+    upper    = ema_slow_SP + param_SP$m_ * roll_std_SP,
+    pos_flat = rep(0, NROW(SP_ff)),  # no auto-flatten
+    strategy = "mom"
+  )
+  posSP_raw <- xts(posSP_raw, order.by = index(data_group1))
+  posSP_raw <- na.locf(posSP_raw, na.rm = FALSE)
+  
+  # 4) Now force these positions to zero outside the allowed window (09:55–15:40)
+  posNQ_final <- flatten_times(posNQ_raw, allowed_start = "09:55", allowed_end = "15:40")
+  posSP_final <- flatten_times(posSP_raw, allowed_start = "09:55", allowed_end = "15:40")
+  
+  # 5) Intraday PnLs
+  dNQ <- diff.xts(data_group1$NQ); dNQ[is.na(dNQ)] <- 0
+  dSP <- diff.xts(data_group1$SP); dSP[is.na(dSP)] <- 0
+  
+  pnl_grossNQ <- posNQ_final * dNQ * contract_multiplier_NQ
+  # count trades => sum of abs(diff(position))
+  ntransNQ <- abs(diff.xts(posNQ_final)); ntransNQ[is.na(ntransNQ)] <- 0
+  pnl_netNQ <- pnl_grossNQ - (ntransNQ * transaction_cost)
+  
+  pnl_grossSP <- posSP_final * dSP * contract_multiplier_SP
+  ntransSP <- abs(diff.xts(posSP_final)); ntransSP[is.na(ntransSP)] <- 0
+  pnl_netSP <- pnl_grossSP - (ntransSP * transaction_cost)
+  
+  # combine
+  pnl_gross_combined <- pnl_grossNQ + pnl_grossSP
+  pnl_net_combined   <- pnl_netNQ   + pnl_netSP
+  ntrans_total       <- ntransNQ + ntransSP
+  
+  # 6) Aggregate daily
+  day_ends <- endpoints(data_group1, on = "days")
+  daily_gross <- period.apply(pnl_gross_combined, INDEX = day_ends, FUN = sum, na.rm = TRUE)
+  daily_net   <- period.apply(pnl_net_combined,   INDEX = day_ends, FUN = sum, na.rm = TRUE)
+  daily_ntrans <- period.apply(ntrans_total,      INDEX = day_ends, FUN = sum, na.rm = TRUE)
+  
+  # 7) Performance metrics
+  grossSR <- mySR(daily_gross, scale = scale_annual)
+  netSR   <- mySR(daily_net,   scale = scale_annual)
+  
+  grossCR <- myCalmarRatio(daily_gross, scale = scale_annual)
+  netCR   <- myCalmarRatio(daily_net,   scale = scale_annual)
+  
+  avg_ntrades <- mean(daily_ntrans, na.rm = TRUE)  # average daily # of trades
+  grossPnL    <- sum(daily_gross,   na.rm = TRUE)
+  netPnL      <- sum(daily_net,     na.rm = TRUE)
+  
+  # final summary statistic
+  stat_ <- netCR * max(0, log(abs(netPnL / 1000)))
+  
+  # 8) Store results
+  new_row <- data.frame(
+    quarter      = selected_quarter,
+    grossSR      = grossSR,
+    netSR        = netSR,
+    grossCR      = grossCR,
+    netCR        = netCR,
+    grossPnL     = grossPnL,
+    netPnL       = netPnL,
+    av_ntrades   = avg_ntrades,
+    stat         = stat_,
+    stringsAsFactors = FALSE
+  )
+  results_table <- rbind(results_table, new_row)
+  
+  rm(data_group1)
+}
+
+# Display final table
+kable(results_table, caption = "Performance Metrics by Quarter for IN SAMPLE DATA")
+
+```
+
+
+
+
+
+```{r final_strategy on OUT OF SAMPLE DATA, echo=FALSE}
+################################################################################
+# FINAL VOLATILITY BREAKOUT MOM STRATEGY (NQ & SP), MULTIPLE QUARTERS
+# with a summary table of performance metrics for each quarter.
+################################################################################
+
+rm(list = ls())
+
+library(xts)
+library(zoo)
+library(TTR)
+library(lubridate)
+library(tseries)       # for maxdrawdown()
+library(caTools)       # runsd()
+library(RColorBrewer)
+library(ggplot2)
+library(dplyr)
+library(knitr)         # for kable() to show final table
+
+# External sources (only if needed)
+source("https://raw.githubusercontent.com/ptwojcik/HFD/master/function_mySR.R")
+source("https://raw.githubusercontent.com/ptwojcik/HFD/master/function_positionVB_new.R")
+source("https://raw.githubusercontent.com/ptwojcik/HFD/master/functions_plotHeatmap.R")
+
+###############################################################################
+# Helper Functions
+###############################################################################
+myCalmarRatio <- function(x, scale = 252) {
+  avg_ <- mean(coredata(x), na.rm = TRUE)
+  dd_obj <- maxdrawdown(cumsum(x))
+  return(scale * avg_ / dd_obj$maxdrawdown)
+}
+
+flatten_times <- function(pos, allowed_start = "09:55", allowed_end = "15:40") {
+  # Force position to 0 if time < allowed_start or time >= allowed_end
+  time_ <- format(index(pos), "%H:%M")
+  
+  # zero before the allowed start
+  pos[time_ < allowed_start] <- 0
+  # zero on or after the allowed end
+  pos[time_ >= allowed_end] <- 0
+  
+  return(pos)
+}
+
+###############################################################################
+# Hard‐coded best parameters for NQ & SP
+###############################################################################
+param_NQ <- list(fast_ema = 20, slow_ema = 60, vol_sd = 60, m_ = 2)
+param_SP <- list(fast_ema = 30, slow_ema = 60, vol_sd = 60, m_ = 2)
+
+contract_multiplier_NQ <- 20
+contract_multiplier_SP <- 50
+transaction_cost       <- 12.0
+scale_annual           <- 252  # Approx number of trading days in a quarter
+
+###############################################################################
+# Quarters to process
+###############################################################################
+quarters <- c("2022_Q2",
+              "2023_Q1", "2023_Q3", "2024_Q3", "2024_Q4")
+
+###############################################################################
+# Prepare a container for our final table
+###############################################################################
+results_table <- data.frame(
+  quarter    = character(),
+  grossSR    = numeric(),
+  netSR      = numeric(),
+  grossCR    = numeric(),
+  netCR      = numeric(),
+  grossPnL   = numeric(),
+  netPnL     = numeric(),
+  av_ntrades = numeric(),
+  stat       = numeric(),
+  stringsAsFactors = FALSE
+)
+
+###############################################################################
+# Main Loop
+###############################################################################
+for (selected_quarter in quarters) {
+  
+  # 1) Load data
+  filename <- paste0("data1_", selected_quarter, ".RData")
+  if (!file.exists(filename)) {
+    cat("File not found:", filename, "- skipping.\n")
+    next
+  }
+  load(filename)
+  
+  object_name <- paste0("data1_", selected_quarter)
+  if (!exists(object_name)) {
+    cat("Object", object_name, "not found - skipping.\n")
+    next
+  }
+  data_group1 <- get(object_name)
+  
+  if (!all(c("NQ", "SP") %in% colnames(data_group1))) {
+    cat("Columns NQ or SP missing - skipping quarter.\n")
+    next
+  }
+  
+  # 2) Preprocessing: forward-fill, skip times
+  data_group1$NQ <- na.locf(data_group1$NQ, na.rm = FALSE)
+  data_group1$SP <- na.locf(data_group1$SP, na.rm = FALSE)
+  
+  hhmm <- format(index(data_group1), format = "%H:%M")
+  # skip first 10 min (09:31–09:40) => NA
+  data_group1[hhmm >= "09:31" & hhmm <= "09:40", ] <- NA
+  # skip last 10 min (15:51–16:00) => NA
+  data_group1[hhmm >= "15:51" & hhmm <= "16:00", ] <- NA
+  
+  # 3) Build "raw" breakout positions for NQ, SP
+  #    IMPORTANT: pos_flat is all zero => we do not flatten automatically
+  NQ_ff <- na.locf(data_group1$NQ, na.rm = FALSE)
+  ema_fast_NQ <- EMA(NQ_ff, n = param_NQ$fast_ema)
+  ema_slow_NQ <- EMA(NQ_ff, n = param_NQ$slow_ema)
+  roll_std_NQ <- runsd(NQ_ff, param_NQ$vol_sd, endrule = "NA", align = "right")
+  
+  posNQ_raw <- positionVB_new(
+    signal   = ema_fast_NQ,
+    lower    = ema_slow_NQ - param_NQ$m_ * roll_std_NQ,
+    upper    = ema_slow_NQ + param_NQ$m_ * roll_std_NQ,
+    pos_flat = rep(0, NROW(NQ_ff)),  # effectively disable auto-flatten
+    strategy = "mom"
+  )
+  posNQ_raw <- xts(posNQ_raw, order.by = index(data_group1))
+  posNQ_raw <- na.locf(posNQ_raw, na.rm = FALSE)
+  
+  # same for SP
+  SP_ff <- na.locf(data_group1$SP, na.rm = FALSE)
+  ema_fast_SP <- EMA(SP_ff, n = param_SP$fast_ema)
+  ema_slow_SP <- EMA(SP_ff, n = param_SP$slow_ema)
+  roll_std_SP <- runsd(SP_ff, param_SP$vol_sd, endrule = "NA", align = "right")
+  
+  posSP_raw <- positionVB_new(
+    signal   = ema_fast_SP,
+    lower    = ema_slow_SP - param_SP$m_ * roll_std_SP,
+    upper    = ema_slow_SP + param_SP$m_ * roll_std_SP,
+    pos_flat = rep(0, NROW(SP_ff)),  # no auto-flatten
+    strategy = "mom"
+  )
+  posSP_raw <- xts(posSP_raw, order.by = index(data_group1))
+  posSP_raw <- na.locf(posSP_raw, na.rm = FALSE)
+  
+  # 4) Now force these positions to zero outside the allowed window (09:55–15:40)
+  posNQ_final <- flatten_times(posNQ_raw, allowed_start = "09:55", allowed_end = "15:40")
+  posSP_final <- flatten_times(posSP_raw, allowed_start = "09:55", allowed_end = "15:40")
+  
+  # 5) Intraday PnLs
+  dNQ <- diff.xts(data_group1$NQ); dNQ[is.na(dNQ)] <- 0
+  dSP <- diff.xts(data_group1$SP); dSP[is.na(dSP)] <- 0
+  
+  pnl_grossNQ <- posNQ_final * dNQ * contract_multiplier_NQ
+  # count trades => sum of abs(diff(position))
+  ntransNQ <- abs(diff.xts(posNQ_final)); ntransNQ[is.na(ntransNQ)] <- 0
+  pnl_netNQ <- pnl_grossNQ - (ntransNQ * transaction_cost)
+  
+  pnl_grossSP <- posSP_final * dSP * contract_multiplier_SP
+  ntransSP <- abs(diff.xts(posSP_final)); ntransSP[is.na(ntransSP)] <- 0
+  pnl_netSP <- pnl_grossSP - (ntransSP * transaction_cost)
+  
+  # combine
+  pnl_gross_combined <- pnl_grossNQ + pnl_grossSP
+  pnl_net_combined   <- pnl_netNQ   + pnl_netSP
+  ntrans_total       <- ntransNQ + ntransSP
+  
+  # 6) Aggregate daily
+  day_ends <- endpoints(data_group1, on = "days")
+  daily_gross <- period.apply(pnl_gross_combined, INDEX = day_ends, FUN = sum, na.rm = TRUE)
+  daily_net   <- period.apply(pnl_net_combined,   INDEX = day_ends, FUN = sum, na.rm = TRUE)
+  daily_ntrans <- period.apply(ntrans_total,      INDEX = day_ends, FUN = sum, na.rm = TRUE)
+  
+  # 7) Performance metrics
+  grossSR <- mySR(daily_gross, scale = scale_annual)
+  netSR   <- mySR(daily_net,   scale = scale_annual)
+  
+  grossCR <- myCalmarRatio(daily_gross, scale = scale_annual)
+  netCR   <- myCalmarRatio(daily_net,   scale = scale_annual)
+  
+  avg_ntrades <- mean(daily_ntrans, na.rm = TRUE)  # average daily # of trades
+  grossPnL    <- sum(daily_gross,   na.rm = TRUE)
+  netPnL      <- sum(daily_net,     na.rm = TRUE)
+  
+  # final summary statistic
+  stat_ <- netCR * max(0, log(abs(netPnL / 1000)))
+  
+  # 8) Store results
+  new_row <- data.frame(
+    quarter      = selected_quarter,
+    grossSR      = grossSR,
+    netSR        = netSR,
+    grossCR      = grossCR,
+    netCR        = netCR,
+    grossPnL     = grossPnL,
+    netPnL       = netPnL,
+    av_ntrades   = avg_ntrades,
+    stat         = stat_,
+    stringsAsFactors = FALSE
+  )
+  results_table <- rbind(results_table, new_row)
+  
+  rm(data_group1)
+}
+
+# Display final table
+kable(results_table, caption = "Performance Metrics by Quarter for OUT OF SAMPLE DATA")
+
+```
+
+
+
+
+
+

@@ -1,0 +1,273 @@
+# setting the working directory if needed
+# setwd("...")
+
+library(xts)
+library(chron)
+library(TTR)
+library(tseries)
+library(knitr) # for nicely looking tables in html files
+library(kableExtra) # for even more nicely looking tables in html files
+library(quantmod) # for PnL graphs
+library(roll)
+
+# lets change the LC_TIME option to English
+Sys.setlocale("LC_TIME", "English")
+
+# mySR function
+mySR <- function(x, scale) {
+  sqrt(scale) * mean(coredata(x), na.rm = TRUE) / 
+    sd(coredata(x), na.rm = TRUE)
+} 
+
+myCalmarRatio <- function(x, # x = series of returns
+                          # scale parameter = Nt
+                          scale) {
+  scale * mean(coredata(x), na.rm = TRUE) / 
+    maxdrawdown(cumsum(x))$maxdrawdown
+  
+} # end of definition
+
+
+
+# lets define the system time zone as America/New_York (used in the data)
+Sys.setenv(TZ = 'America/New_York')
+
+# do it simply in a loop on quarters
+
+for (selected_quarter in c("2022_Q1", "2022_Q3", "2022_Q4", 
+                           "2023_Q2", "2023_Q4", 
+                           "2024_Q1", "2024_Q2", 
+                           "2022_Q2", "2023_Q1", "2023_Q3", 
+                           "2024_Q3", "2024_Q4")) {
+  
+  message(selected_quarter)
+  
+  # loading the data for a selected quarter from a subdirectory "data""
+  
+  filename_ <- paste0("data2_", selected_quarter, ".RData")
+  
+  load(filename_)
+  
+  data.group2 <- get(paste0("data2_", selected_quarter))
+  
+  times_ <- substr(index(data.group2), 12, 19)
+  
+  # the following common assumptions were defined:
+  # 1.	do not use in calculations the data from the first and last 10 minutes of the session (9:31--9:40 and 15:51--16:00) – put missing values there,
+  
+  # lets put missing values ofr these periods
+  data.group2["T09:31/T09:40",] <- NA 
+  data.group2["T15:51/T16:00",] <- NA
+  
+  
+  # lets calculate EMA10, SMA45, MAD, and rolling SD for all series
+  data.group2$AUD_SMA45 <- SMA(na.locf(data.group2$AUD), 45)
+  data.group2$AUD_roll_sd <- roll_sd(diff.xts(data.group2$AUD), width = 120, na_restore = TRUE)
+  data.group2$CAD_SMA45 <- SMA(na.locf(data.group2$CAD), 45)
+  data.group2$CAD_roll_sd <- roll_sd(diff.xts(data.group2$CAD), width = 120, na_restore = TRUE)
+  data.group2$XAG_SMA45 <- SMA(na.locf(data.group2$XAG), 45)
+  data.group2$XAG_roll_sd <- roll_sd(diff.xts(data.group2$XAG), width = 120, na_restore = TRUE)
+  data.group2$XAU_EMA10 <- EMA(na.locf(data.group2$XAU), 10)
+  data.group2$XAU_MAD <- rollapply(data.group2$XAU, 
+                                   width = 120,  # Rolling window size (e.g., 120 periods)
+                                   FUN = function(x) mean(abs(x - mean(x, na.rm = TRUE)), na.rm = TRUE), 
+                                   fill = NA,  # Handle NA values for edge cases
+                                   align = "right")  # Align MAD with the end of the window
+  
+  # put missing value whenever the original price is missing
+  data.group2$AUD_SMA45[is.na(data.group2$AUD)] <- NA
+  data.group2$AUD_roll_sd[is.na(data.group2$AUD)] <- NA
+  data.group2$CAD_SMA45[is.na(data.group2$CAD)] <- NA
+  data.group2$CAD_roll_sd[is.na(data.group2$CAD)] <- NA
+  data.group2$XAG_SMA45[is.na(data.group2$XAG)] <- NA
+  data.group2$XAG_roll_sd[is.na(data.group2$XAG)] <- NA
+  data.group2$XAU_EMA10[is.na(data.group2$XAU)] <- NA
+  data.group2$XAU_MAD[is.na(data.group2$XAU)] <- NA
+  # Define thresholds using MAD
+  k <- 2  # Multiplier for MAD
+  data.group2$XAU_upper_threshold <- na.locf(data.group2$XAU_EMA10 + k * data.group2$XAU_MAD, na.rm = FALSE)
+  data.group2$XAU_lower_threshold <- na.locf(data.group2$XAU_EMA10 - k * data.group2$XAU_MAD, na.rm = FALSE)
+
+  
+  # Calculating Thresholds 
+  data.group2$AUD_upper_threshold <- data.group2$AUD_SMA45 + 1 * data.group2$AUD_roll_sd
+  data.group2$AUD_lower_threshold <- data.group2$AUD_SMA45 - 1 * data.group2$AUD_roll_sd
+  data.group2$CAD_upper_threshold <- data.group2$CAD_SMA45 + 1 * data.group2$CAD_roll_sd
+  data.group2$CAD_lower_threshold <- data.group2$CAD_SMA45 - 1 * data.group2$CAD_roll_sd
+  data.group2$XAG_upper_threshold <- data.group2$XAG_SMA45 + 1 * data.group2$XAG_roll_sd
+  data.group2$XAG_lower_threshold <- data.group2$XAG_SMA45 - 1 * data.group2$XAG_roll_sd
+  # lets calculate the position for the MOMENTUM strategy
+  # for each asset separately
+  # if fast MA(t-1) > slow MA(t-1) => pos(t) = 1 [long]
+  # if fast MA(t-1) <= slow MA(t-1) => pos(t) = -1 [short]
+  #  caution! this strategy is always in the market !
+  
+  data.group2$position.AUD.breakout <- ifelse(lag.xts(data.group2$AUD) > lag.xts(data.group2$AUD_upper_threshold), 1,
+                                              ifelse(lag.xts(data.group2$AUD) < lag.xts(data.group2$AUD_lower_threshold), -1, 0))
+  
+  
+  data.group2$position.CAD.breakout <- ifelse(lag.xts(data.group2$CAD) > lag.xts(data.group2$CAD_upper_threshold), 1,
+                                              ifelse(lag.xts(data.group2$CAD) < lag.xts(data.group2$CAD_lower_threshold), -1, 0))
+  
+  data.group2$position.XAG.breakout <- ifelse(lag.xts(data.group2$XAG) > lag.xts(data.group2$XAG_upper_threshold), 1,
+                                              ifelse(lag.xts(data.group2$XAG) < lag.xts(data.group2$XAG_lower_threshold), -1, 0))
+  
+  data.group2$position.XAU.mom <- ifelse(lag.xts(data.group2$XAU) > lag.xts(data.group2$XAU_upper_threshold), 1,
+                                                                         ifelse(lag.xts(data.group2$XAU) < lag.xts(data.group2$XAU_lower_threshold), -1, 0))
+  
+  
+  # lets apply the remaining assumptions
+  # - exit all positions 15 minutes before the session end, i.e. at 16:45
+  # - do not trade within the first 15 minutes after the break (until 18:15)
+  
+  data.group2$position.AUD.breakout[times(times_) > times("16:45:00") &
+                                      times(times_) <= times("18:15:00")] <- 0
+  
+  data.group2$position.CAD.breakout[times(times_) > times("16:45:00") &
+                                      times(times_) <= times("18:15:00")] <- 0
+  
+  data.group2$position.XAG.breakout[times(times_) > times("16:45:00") &
+                                      times(times_) <= times("18:15:00")] <- 0
+  
+  data.group2$position.XAU.mom[times(times_) > times("16:45:00") &
+                                 times(times_) <= times("18:15:00")] <- 0
+  
+  
+  # lets also fill every missing position with the previous one
+  data.group2$position.AUD.breakout <- na.locf(data.group2$position.AUD.breakout, na.rm = FALSE)
+  data.group2$position.CAD.breakout <- na.locf(data.group2$position.CAD.breakout, na.rm = FALSE)
+  data.group2$position.XAG.breakout <- na.locf(data.group2$position.XAG.breakout, na.rm = FALSE)
+  data.group2$position.XAU.mom <- na.locf(data.group2$position.XAU.mom, na.rm = FALSE)
+  
+  
+  # calculating gross pnl - remember to multiply by the point value !!!!
+  data.group2$pnl_gross.AUD.breakout <- data.group2$position.AUD.breakout * diff.xts(data.group2$AUD) * 100000
+  data.group2$pnl_gross.CAD.breakout <- data.group2$position.CAD.breakout * diff.xts(data.group2$CAD) * 100000
+  data.group2$pnl_gross.XAU.mom <- data.group2$position.XAU.mom * diff.xts(data.group2$XAU) * 100
+  data.group2$pnl_gross.XAG.breakout <- data.group2$position.XAG.breakout * diff.xts(data.group2$XAG) * 5000
+  
+  # number of transactions
+  
+  data.group2$ntrans.AUD.breakout <- abs(diff.xts(data.group2$position.AUD.breakout))
+  data.group2$ntrans.AUD.breakout[1] <- 0
+  
+  data.group2$ntrans.CAD.breakout <- abs(diff.xts(data.group2$position.CAD.breakout))
+  data.group2$ntrans.CAD.breakout[1] <- 0
+  
+  data.group2$ntrans.XAG.breakout <- abs(diff.xts(data.group2$position.XAG.breakout))
+  data.group2$ntrans.XAG.breakout[1] <- 0
+  
+  data.group2$ntrans.XAU.mom <- abs(diff.xts(data.group2$position.XAU.mom))
+  data.group2$ntrans.XAU.mom[1] <- 0
+  
+  # net pnl
+  data.group2$pnl_net.AUD.breakout <- data.group2$pnl_gross.AUD.breakout - data.group2$ntrans.AUD.breakout * 10
+  
+  data.group2$pnl_net.CAD.breakout <- data.group2$pnl_gross.CAD.breakout - data.group2$ntrans.CAD.breakout * 10
+  
+  data.group2$pnl_net.XAG.breakout <- data.group2$pnl_gross.XAG.breakout - data.group2$ntrans.XAG.breakout * 10
+  
+  data.group2$pnl_net.XAU.mom <- data.group2$pnl_gross.XAU.mom  -
+    data.group2$ntrans.XAU.mom * 15 # 15$ per transaction
+  
+  
+  # aggregate pnls and number of transactions to daily
+  my.endpoints <- endpoints(data.group2, "days")
+  
+  data.group2.daily <- period.apply(data.group2[,c(grep("pnl", names(data.group2)),
+                                                   grep("ntrans", names(data.group2)))],
+                                    INDEX = my.endpoints, 
+                                    FUN = function(x) colSums(x, na.rm = TRUE))
+  
+  # lets SUM gross and net pnls
+  
+  data.group2.daily$pnl_gross.mom <- 
+    data.group2.daily$pnl_gross.AUD.breakout +
+    data.group2.daily$pnl_gross.CAD.breakout +
+    data.group2.daily$pnl_gross.XAU.mom +
+    data.group2.daily$pnl_gross.XAG.breakout
+  
+  data.group2.daily$pnl_net.mom <- 
+    data.group2.daily$pnl_net.AUD.breakout +
+    data.group2.daily$pnl_net.CAD.breakout +
+    data.group2.daily$pnl_net.XAU.mom +
+    data.group2.daily$pnl_net.XAG.breakout
+  
+  # lets SUM number of transactions (with the same weights)
+  
+  data.group2.daily$ntrans.mom <- 
+    data.group2.daily$ntrans.AUD.breakout +
+    data.group2.daily$ntrans.CAD.breakout +
+    data.group2.daily$ntrans.XAG.breakout +
+    data.group2.daily$ntrans.XAU.mom
+  
+  
+  # summarize the strategy for this quarter
+  
+  # SR
+  grossSR = mySR(x = data.group2.daily$pnl_gross.mom, scale = 252)
+  netSR = mySR(x = data.group2.daily$pnl_net.mom, scale = 252)
+  # CR
+  grossCR = myCalmarRatio(x = data.group2.daily$pnl_gross.mom, scale = 252)
+  netCR = myCalmarRatio(x = data.group2.daily$pnl_net.mom, scale = 252)
+  
+  # average number of transactions
+  av.daily.ntrades = mean(data.group2.daily$ntrans.mom, 
+                          na.rm = TRUE)
+  # PnL
+  grossPnL = sum(data.group2.daily$pnl_gross.mom)
+  netPnL = sum(data.group2.daily$pnl_net.mom)
+  
+  # stat
+  stat = netCR * max(0, log(abs(netPnL/1000)))
+  
+  # collecting all statistics for a particular quarter
+  
+  quarter_stats <- data.frame(quarter = selected_quarter,
+                              assets.group = 2,
+                              grossSR,
+                              netSR,
+                              grossCR,
+                              netCR,
+                              av.daily.ntrades,
+                              grossPnL,
+                              netPnL,
+                              stat,
+                              stringsAsFactors = FALSE
+  )
+  
+  # collect summaries for all quarters
+  if(!exists("quarter_stats.all.group2")) quarter_stats.all.group2 <- quarter_stats else
+    quarter_stats.all.group2 <- rbind(quarter_stats.all.group2, quarter_stats)
+  
+  # create a plot of gros and net pnl and save it to png file
+  
+  png(filename = paste0("pnl_group2_", selected_quarter, ".png"),
+      width = 1000, height = 600)
+  print( # when plotting in a loop you have to use print()
+    plot(cbind(cumsum(data.group2.daily$pnl_gross.mom),
+               cumsum(data.group2.daily$pnl_net.mom)),
+         multi.panel = FALSE,
+         main = paste0("Gross and net PnL for asset group 2 \n quarter ", selected_quarter), 
+         col = c("#377EB8", "#E41A1C"),
+         major.ticks = "weeks", 
+         grid.ticks.on = "weeks",
+         grid.ticks.lty = 3,
+         legend.loc = "topleft",
+         cex = 1)
+  )
+  dev.off()
+  
+  # remove all unneeded objects for group 2
+  rm(data.group2, my.endpoints, grossSR, netSR, av.daily.ntrades,
+     grossPnL, netPnL, stat, quarter_stats, data.group2.daily)
+  
+  gc()
+  
+  
+} # end of the loop
+
+write.csv(quarter_stats.all.group2, 
+          "quarter_stats.all.group2.csv",
+          row.names = FALSE)
+
