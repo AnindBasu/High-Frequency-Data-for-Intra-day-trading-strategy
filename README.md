@@ -64,16 +64,6 @@ This project explores quantitative trading strategies using high-frequency finan
 ## ✅ Conclusion
 This project demonstrates the feasibility of applying quantitative methods to high-frequency financial data for real-time trading. Strategy effectiveness depends heavily on market conditions, choice of features, and execution latency. Adaptive strategies that combine multiple signals show the most promise.
 
----
-
-## 📸 Pictures and Diagrams
-Include these visuals in your final report or documentation:
-- 📉 Mid-price movement vs. predicted signal chart
-- 📊 Bar plots comparing strategy returns
-- 🧮 Heatmaps showing correlation among features
-- ⏱️ Timeline showing latency vs. execution success
-
----
 
 ## 🌍 Implications
 - **Academic:** Provides a framework for further research in market microstructure and predictive modeling.
